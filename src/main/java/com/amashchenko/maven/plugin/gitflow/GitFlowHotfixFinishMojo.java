@@ -45,6 +45,14 @@ public class GitFlowHotfixFinishMojo extends AbstractGitFlowMojo {
     private boolean keepBranch = false;
 
     /**
+     * Whether to skip deploying created tag to nexus, assuming tag was created.
+     *
+     * @since 1.4.2
+     */
+    @Parameter(property = "skipMvnDeploy", defaultValue = "true")
+    private boolean skipMvnDeploy = true;
+    
+    /**
      * Whether to skip calling Maven test goal before merging the branch.
      * 
      * @since 1.0.5
@@ -143,17 +151,19 @@ public class GitFlowHotfixFinishMojo extends AbstractGitFlowMojo {
 
             // git merge --no-ff hotfix/...
             gitMergeNoff(hotfixBranchName);
-
+            
+            String tagVersion = getCurrentProjectVersion();
+            
             if (!skipTag) {
-                String tagVersion = getCurrentProjectVersion();
                 if (tychoBuild && ArtifactUtils.isSnapshot(tagVersion)) {
                     tagVersion = tagVersion.replace("-"
                             + Artifact.SNAPSHOT_VERSION, "");
                 }
-
+                
+                tagVersion = gitFlowConfig.getVersionTagPrefix() + tagVersion;
+                
                 // git tag -a ...
-                gitTag(gitFlowConfig.getVersionTagPrefix() + tagVersion,
-                        commitMessages.getTagHotfixMessage());
+                gitTag(tagVersion, commitMessages.getTagHotfixMessage());
             }
 
             // check whether release branch exists
@@ -222,6 +232,9 @@ public class GitFlowHotfixFinishMojo extends AbstractGitFlowMojo {
                     }
                 }
             }
+            if (!skipTag && !skipMvnDeploy) {
+                mvnDeploy(tagVersion);
+            }            
         } catch (CommandLineException e) {
             getLog().error(e);
         } catch (VersionParseException e) {

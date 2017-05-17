@@ -73,6 +73,14 @@ public class GitFlowReleaseFinishMojo extends AbstractGitFlowMojo {
     @Parameter(property = "releaseMergeFFOnly", defaultValue = "false")
     private boolean releaseMergeFFOnly = false;
 
+    /**
+     * Whether to skip deploying created tag to nexus, assuming tag was created.
+     *
+     * @since 1.4.2
+     */
+    @Parameter(property = "skipMvnDeploy", defaultValue = "true")
+    private boolean skipMvnDeploy = true;
+    
     /** {@inheritDoc} */
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
@@ -132,17 +140,19 @@ public class GitFlowReleaseFinishMojo extends AbstractGitFlowMojo {
 
             // get current project version from pom
             final String currentVersion = getCurrentProjectVersion();
+            String tagVersion = currentVersion;
 
             if (!skipTag) {
-                String tagVersion = currentVersion;
+
                 if (tychoBuild && ArtifactUtils.isSnapshot(currentVersion)) {
                     tagVersion = currentVersion.replace("-"
                             + Artifact.SNAPSHOT_VERSION, "");
                 }
 
+                tagVersion = gitFlowConfig.getVersionTagPrefix() + tagVersion;
+
                 // git tag -a ...
-                gitTag(gitFlowConfig.getVersionTagPrefix() + tagVersion,
-                        commitMessages.getTagReleaseMessage());
+                gitTag(tagVersion, commitMessages.getTagReleaseMessage());
             }
 
             if (notSameProdDevName()) {
@@ -183,6 +193,9 @@ public class GitFlowReleaseFinishMojo extends AbstractGitFlowMojo {
                 if (notSameProdDevName()) {
                     gitPush(gitFlowConfig.getDevelopmentBranch(), !skipTag);
                 }
+            }
+            if (!skipTag && !skipMvnDeploy) {
+                mvnDeploy(tagVersion);
             }
         } catch (CommandLineException e) {
             getLog().error(e);

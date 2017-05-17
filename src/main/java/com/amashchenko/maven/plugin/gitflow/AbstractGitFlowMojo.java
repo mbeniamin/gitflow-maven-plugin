@@ -18,6 +18,7 @@ package com.amashchenko.maven.plugin.gitflow;
 import java.io.FileReader;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
 
 import org.apache.maven.artifact.ArtifactUtils;
 import org.apache.maven.execution.MavenSession;
@@ -30,6 +31,7 @@ import org.apache.maven.plugins.annotations.Component;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.settings.Settings;
+import org.apache.maven.shared.release.versions.DefaultVersionInfo;
 import org.codehaus.plexus.components.interactivity.Prompter;
 import org.codehaus.plexus.util.StringUtils;
 import org.codehaus.plexus.util.cli.CommandLineException;
@@ -263,6 +265,28 @@ public abstract class AbstractGitFlowMojo extends AbstractMojo {
     }
 
     /**
+     * Validates version.
+     *
+     * @param version
+     *            Version to validate.
+     * @return <code>true</code> when version is valid, <code>false</code>
+     *         otherwise.
+     */
+    protected boolean validVersion(final String version) {
+        boolean res = false;
+        Matcher alternateMatcher = DefaultVersionInfo.ALTERNATE_PATTERN
+                .matcher(version);
+        if (alternateMatcher.matches()) {
+            res = true;
+        } else {
+            Matcher standardMatcher = DefaultVersionInfo.STANDARD_PATTERN
+                    .matcher(version);
+            res = standardMatcher.matches();
+        }
+        return res;
+    }    
+    
+    /**
      * Executes git commands to check for uncommitted changes.
      * 
      * @return <code>true</code> when there are uncommitted changes,
@@ -431,17 +455,18 @@ public abstract class AbstractGitFlowMojo extends AbstractMojo {
 
     /**
      * Executes git checkout.
-     * 
-     * @param branchName
-     *            Branch name to checkout.
+     *
+     * @param gitRef
+     *            git reference (eg branch/tag) to checkout.
+
      * @throws MojoFailureException
      * @throws CommandLineException
      */
-    protected void gitCheckout(final String branchName)
+    protected void gitCheckout(final String gitRef)
             throws MojoFailureException, CommandLineException {
-        getLog().info("Checking out '" + branchName + "' branch.");
+        getLog().info("Checking out " + gitRef);
 
-        executeGitCommand("checkout", branchName);
+        executeGitCommand("checkout", gitRef);
     }
 
     /**
@@ -639,6 +664,19 @@ public abstract class AbstractGitFlowMojo extends AbstractMojo {
     }
 
     /**
+     * Returns the git branch we're currently on.
+     *
+     * @return git branch name we're currently on
+     * @throws MojoFailureException
+     * @throws CommandLineException
+     */
+    protected String gitBranchGet()
+            throws MojoFailureException, CommandLineException {
+
+        return executeGitCommandReturn("rev-parse", "--abbrev-ref", "HEAD");
+    }
+
+    /**
      * Executes git fetch.
      * 
      * @param branchName
@@ -748,6 +786,23 @@ public abstract class AbstractGitFlowMojo extends AbstractMojo {
         executeMvnCommand("clean", "install");
     }
 
+    /**
+     * Checks out given {@code tagVersion}, executes mvn deploy & finally
+     * checks out the previous branch again.
+     *
+     * @throws MojoFailureException
+     * @throws CommandLineException
+     */
+    protected void mvnDeploy(String tagVersion) throws MojoFailureException,
+            CommandLineException {
+        getLog().info( String.format( "Deploying tag '%s' to nexus", tagVersion));
+        final String currentBranch = gitBranchGet();
+
+        gitCheckout(tagVersion);
+        executeMvnCommand("deploy");
+        gitCheckout(currentBranch);
+    }
+    
     /**
      * Executes Git command and returns output.
      * 
